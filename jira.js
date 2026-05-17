@@ -22,6 +22,7 @@ function filterIssue(raw) {
     assignee: f.assignee?.displayName ?? null,
     reporter: f.reporter?.displayName ?? null,
     priority: f.priority?.name ?? null,
+    parent: f.parent ? { key: f.parent.key, summary: f.parent.fields?.summary } : null,
     description: extractText(f.description),
     created: f.created,
     updated: f.updated,
