@@ -1,9 +1,4 @@
 import axios from "axios";
-import dotenv from "dotenv";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-
-dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), ".env") });
 
 const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN } = process.env;
 
@@ -12,6 +7,23 @@ const headers = { Accept: "application/json", "Content-Type": "application/json"
 
 const api = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/api/3`, auth, headers });
 const agile = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/agile/1.0`, auth, headers });
+
+function toADF(text) {
+  return {
+    type: "doc",
+    version: 1,
+    content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+  };
+}
+
+function extractText(adf) {
+  if (!adf) return null;
+  const collect = (nodes) =>
+    (nodes ?? [])
+      .map((n) => (n.type === "text" ? n.text : collect(n.content)))
+      .join("");
+  return collect(adf.content);
+}
 
 function filterIssue(raw) {
   const f = raw.fields ?? {};
@@ -29,14 +41,37 @@ function filterIssue(raw) {
   };
 }
 
-function extractText(adf) {
-  if (!adf) return null;
-  const collect = (nodes) =>
-    (nodes ?? [])
-      .map((n) => (n.type === "text" ? n.text : collect(n.content)))
-      .flat()
-      .join("");
-  return collect(adf.content);
+function filterIssueSummary(raw) {
+  const f = raw.fields ?? {};
+  return {
+    key: raw.key,
+    summary: f.summary,
+    status: f.status?.name,
+    assignee: f.assignee?.displayName ?? null,
+  };
+}
+
+function filterProject(raw) {
+  return {
+    key: raw.key,
+    name: raw.name,
+    type: raw.projectTypeKey,
+    lead: raw.lead?.displayName ?? null,
+  };
+}
+
+function filterComment(raw) {
+  return {
+    id: raw.id,
+    author: raw.author?.displayName ?? null,
+    body: extractText(raw.body),
+    created: raw.created,
+    updated: raw.updated,
+  };
+}
+
+function filterSprint(raw) {
+  return { id: raw.id, name: raw.name, state: raw.state, goal: raw.goal ?? null };
 }
 
 export async function getIssue(key) {
@@ -49,34 +84,21 @@ export async function searchIssues(jql) {
     params: { jql, fields: "summary,status,assignee" },
   });
   return {
-    issues: (res.data.issues ?? []).map((i) => ({
-      key: i.key,
-      summary: i.fields?.summary,
-      status: i.fields?.status?.name,
-      assignee: i.fields?.assignee?.displayName ?? null,
-    })),
+    issues: (res.data.issues ?? []).map(filterIssueSummary),
     isLast: res.data.isLast,
   };
 }
 
-function toADF(text) {
-  return {
-    type: "doc",
-    version: 1,
-    content: [{ type: "paragraph", content: [{ type: "text", text: text }] }],
-  };
-}
-
-export async function createIssue(summary, description) {
+export async function createIssue(projectKey, summary, description) {
   const res = await api.post(`/issue`, {
     fields: {
-      project: { key: process.env.JIRA_PROJECT },
+      project: { key: projectKey },
       summary,
       description: toADF(description),
       issuetype: { name: "Task" },
     },
   });
-  return res.data;
+  return { key: res.data.key };
 }
 
 export async function updateIssue(key, { summary, description, assignee, priority, status }) {
@@ -108,12 +130,12 @@ export async function updateIssue(key, { summary, description, assignee, priorit
 
 export async function addComment(key, body) {
   const res = await api.post(`/issue/${key}/comment`, { body: toADF(body) });
-  return res.data;
+  return filterComment(res.data);
 }
 
 export async function listProjects() {
   const res = await api.get(`/project`);
-  return res.data;
+  return (res.data ?? []).map(filterProject);
 }
 
 export async function getSprint(boardId, state = "active") {
@@ -123,8 +145,11 @@ export async function getSprint(boardId, state = "active") {
   if (state === "active" && sprints.length > 0) {
     const sprint = sprints[0];
     const issues = await agile.get(`/board/${boardId}/sprint/${sprint.id}/issue`);
-    return { sprint, issues: issues.data.issues };
+    return {
+      sprint: filterSprint(sprint),
+      issues: (issues.data.issues ?? []).map(filterIssueSummary),
+    };
   }
 
-  return { sprints };
+  return { sprints: sprints.map(filterSprint) };
 }

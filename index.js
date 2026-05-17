@@ -8,7 +8,7 @@ import * as jira from "./jira.js";
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), ".env") });
 
-const REQUIRED_ENV = ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_TOKEN", "JIRA_PROJECT"];
+const REQUIRED_ENV = ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_TOKEN"];
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missing.length > 0) {
   console.error(`Missing required environment variables: ${missing.join(", ")}`);
@@ -50,13 +50,14 @@ server.registerTool(
 server.registerTool(
   "create_issue",
   {
-    description: "Create a new Task in the configured Jira project",
+    description: "Create a new Task in a Jira project",
     inputSchema: {
+      project_key: z.string().describe("Jira project key, e.g. PROJ"),
       summary: z.string().describe("Issue title"),
       description: z.string().describe("Issue description in plain text"),
     },
   },
-  ({ summary, description }) => safeCall(() => jira.createIssue(summary, description))
+  ({ project_key, summary, description }) => safeCall(() => jira.createIssue(project_key, summary, description))
 );
 
 server.registerTool(
