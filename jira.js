@@ -13,14 +13,49 @@ const headers = { Accept: "application/json", "Content-Type": "application/json"
 const api = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/api/3`, auth, headers });
 const agile = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/agile/1.0`, auth, headers });
 
+function filterIssue(raw) {
+  const f = raw.fields ?? {};
+  return {
+    key: raw.key,
+    summary: f.summary,
+    status: f.status?.name,
+    assignee: f.assignee?.displayName ?? null,
+    reporter: f.reporter?.displayName ?? null,
+    priority: f.priority?.name ?? null,
+    description: extractText(f.description),
+    created: f.created,
+    updated: f.updated,
+  };
+}
+
+function extractText(adf) {
+  if (!adf) return null;
+  const collect = (nodes) =>
+    (nodes ?? [])
+      .map((n) => (n.type === "text" ? n.text : collect(n.content)))
+      .flat()
+      .join("");
+  return collect(adf.content);
+}
+
 export async function getIssue(key) {
   const res = await api.get(`/issue/${key}`);
-  return res.data;
+  return filterIssue(res.data);
 }
 
 export async function searchIssues(jql) {
-  const res = await api.get(`/search/jql`, { params: { jql } });
-  return res.data;
+  const res = await api.get(`/search/jql`, {
+    params: { jql, fields: "summary,status,assignee" },
+  });
+  return {
+    issues: (res.data.issues ?? []).map((i) => ({
+      key: i.key,
+      summary: i.fields?.summary,
+      status: i.fields?.status?.name,
+      assignee: i.fields?.assignee?.displayName ?? null,
+    })),
+    isLast: res.data.isLast,
+  };
 }
 
 function toADF(text) {
