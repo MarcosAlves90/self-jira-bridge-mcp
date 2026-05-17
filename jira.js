@@ -19,7 +19,7 @@ export async function getIssue(key) {
 }
 
 export async function searchIssues(jql) {
-  const res = await api.get(`/search`, { params: { jql } });
+  const res = await api.get(`/search/jql`, { params: { jql } });
   return res.data;
 }
 
