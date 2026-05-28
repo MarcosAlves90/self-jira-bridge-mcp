@@ -75,7 +75,7 @@ function extractNodeText(node) {
 }
 
 export function extractText(adf) {
-  if (!adf) return null;
+  if (adf === null || adf === undefined) return null;
   if (Array.isArray(adf.content)) {
     return adf.content.map(extractNodeText).join("\n").trimEnd();
   }
@@ -83,7 +83,7 @@ export function extractText(adf) {
 }
 
 function normalizeUser(user) {
-  if (!user) return null;
+  if (user === null || user === undefined) return null;
   return {
     accountId: user.accountId ?? null,
     displayName: user.displayName ?? null,
@@ -93,7 +93,7 @@ function normalizeUser(user) {
 }
 
 function normalizeFieldObject(field) {
-  if (!field) return null;
+  if (field === null || field === undefined) return null;
   return {
     id: field.id ?? null,
     key: field.key ?? null,
@@ -473,15 +473,19 @@ export async function createIssue({
 export async function transitionIssue(key, { transition, fields, update } = {}) {
   const res = await request("api", { url: `/issue/${key}/transitions`, method: "GET" });
   const transitions = res.data.transitions ?? [];
-  const transitionId = typeof transition === "object" ? transition?.id : undefined;
+  const hasTransitionId =
+    typeof transition === "object" && transition !== null && Object.hasOwn(transition, "id");
+  const transitionId = hasTransitionId ? transition.id : null;
   const transitionName = typeof transition === "string" ? transition : transition?.name;
-  const target =
-    transitionId !== undefined
-      ? transitions.find((candidate) => String(candidate.id) === String(transitionId))
-      : transitions.find(
-          (candidate) =>
-            candidate.name?.toLowerCase() === String(transitionName ?? "").toLowerCase()
-        );
+  let target;
+
+  if (hasTransitionId) {
+    target = transitions.find((candidate) => String(candidate.id) === String(transitionId));
+  } else {
+    target = transitions.find(
+      (candidate) => candidate.name?.toLowerCase() === String(transitionName ?? "").toLowerCase()
+    );
+  }
 
   if (target === undefined) {
     throw new Error(
@@ -526,8 +530,12 @@ export async function updateIssue(
     update,
   });
 
-  if (status !== undefined || transitionId !== undefined || transitionName !== undefined) {
-    const transition = transitionId !== undefined ? { id: transitionId } : transitionName ?? status;
+  const hasTransitionId = transitionId !== undefined;
+  const hasTransitionName = transitionName !== undefined;
+  const hasStatus = status !== undefined;
+
+  if (hasStatus || hasTransitionId || hasTransitionName) {
+    const transition = hasTransitionId ? { id: transitionId } : transitionName ?? status;
     return transitionIssue(key, {
       transition,
       fields: body.fields,

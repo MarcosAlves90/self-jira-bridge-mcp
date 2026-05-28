@@ -219,7 +219,7 @@ server.registerTool(
   "list_projects",
   {
     description: "List all Jira projects accessible with the current credentials",
-    inputSchema: {},
+    inputSchema: z.object({}),
   },
   () => safeCall(() => jira.listProjects())
 );
