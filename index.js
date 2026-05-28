@@ -171,6 +171,29 @@ server.registerTool(
 );
 
 server.registerTool(
+  "add_attachment",
+  {
+    description: "Upload an attachment to an existing issue",
+    inputSchema: {
+      key: z.string().describe("Jira issue key"),
+      path: z.string().optional().describe("Local file path to upload"),
+      content: z.string().optional().describe("Attachment content when uploading inline text or base64 data"),
+      filename: z.string().optional().describe("Attachment filename, required when content is provided directly"),
+      content_encoding: z.enum(["utf8", "base64"]).optional().default("utf8").describe("How to interpret inline content"),
+      content_type: z.string().optional().describe("Optional MIME type, defaults to application/octet-stream"),
+    },
+  },
+  ({ key, content_encoding, content_type, ...options }) =>
+    safeCall(() =>
+      jira.addAttachment(key, {
+        ...options,
+        contentEncoding: content_encoding,
+        contentType: content_type,
+      })
+    )
+);
+
+server.registerTool(
   "list_projects",
   {
     description: "List all Jira projects accessible with the current credentials",

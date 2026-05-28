@@ -1,7 +1,8 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), ".env") });
 
@@ -12,6 +13,16 @@ const headers = { Accept: "application/json", "Content-Type": "application/json"
 
 const api = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/api/3`, auth, headers });
 const agile = axios.create({ baseURL: `${JIRA_BASE_URL}/rest/agile/1.0`, auth, headers });
+const attachmentApi = axios.create({
+  baseURL: `${JIRA_BASE_URL}/rest/api/3`,
+  auth,
+  headers: {
+    Accept: "application/json",
+    "X-Atlassian-Token": "no-check",
+  },
+  maxBodyLength: Infinity,
+  maxContentLength: Infinity,
+});
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined && v !== null));
@@ -91,6 +102,20 @@ function normalizeFieldObject(field) {
   };
 }
 
+export function normalizeAttachment(raw) {
+  return {
+    id: raw.id ?? null,
+    filename: raw.filename ?? null,
+    mimeType: raw.mimeType ?? null,
+    size: raw.size ?? null,
+    created: raw.created ?? null,
+    author: normalizeUser(raw.author),
+    content: raw.content ?? null,
+    thumbnail: raw.thumbnail ?? null,
+    raw,
+  };
+}
+
 export function normalizeIssue(raw) {
   const f = raw.fields ?? {};
   return {
@@ -135,6 +160,7 @@ export function normalizeIssue(raw) {
     components: (f.components ?? []).map(normalizeFieldObject),
     fixVersions: (f.fixVersions ?? []).map(normalizeFieldObject),
     versions: (f.versions ?? []).map(normalizeFieldObject),
+    attachments: (f.attachment ?? []).map(normalizeAttachment),
     subtasks: (f.subtasks ?? []).map((issue) => ({
       key: issue.key ?? null,
       summary: issue.fields?.summary ?? null,
@@ -258,6 +284,17 @@ async function request(base, config) {
   };
 }
 
+async function requestAttachment(config) {
+  const res = await attachmentApi.request(config);
+  return {
+    status: res.status,
+    headers: {
+      "content-type": res.headers["content-type"] ?? null,
+    },
+    data: res.data,
+  };
+}
+
 export async function requestJira({ base = "api", method, path, query, body, headers: extraHeaders }) {
   if (!path || !path.startsWith("/")) {
     throw new Error("Jira request path must start with '/'");
@@ -270,6 +307,59 @@ export async function requestJira({ base = "api", method, path, query, body, hea
     data: body,
     headers: extraHeaders ? { ...headers, ...extraHeaders } : headers,
   });
+}
+
+export async function buildAttachmentUploadPayload({
+  path,
+  content,
+  filename,
+  contentEncoding,
+  content_encoding,
+  contentType,
+  content_type,
+} = {}) {
+  const resolvedContentEncoding = contentEncoding ?? content_encoding ?? "utf8";
+  const resolvedContentType = contentType ?? content_type ?? "application/octet-stream";
+  const hasPath = path !== undefined && path !== null;
+  const hasContent = content !== undefined && content !== null;
+
+  if (hasPath === hasContent) {
+    throw new Error("Provide exactly one of path or content for attachment upload");
+  }
+
+  let attachmentFilename = filename ?? null;
+  let bytes;
+
+  if (hasPath) {
+    bytes = await readFile(path);
+    attachmentFilename = attachmentFilename ?? basename(path);
+  } else {
+    if (!attachmentFilename) {
+      throw new Error("filename is required when uploading attachment content directly");
+    }
+
+    bytes =
+      resolvedContentEncoding === "base64"
+        ? Buffer.from(content, "base64")
+        : Buffer.from(content, "utf8");
+  }
+
+  if (!attachmentFilename) {
+    throw new Error("Unable to determine attachment filename");
+  }
+
+  const file = new File([bytes], attachmentFilename, {
+    type: resolvedContentType,
+  });
+  const form = new FormData();
+  form.append("file", file);
+
+  return {
+    form,
+    filename: attachmentFilename,
+    contentType: resolvedContentType,
+    size: file.size,
+  };
 }
 
 export async function getIssue(key, { fields, expand, properties } = {}) {
@@ -459,6 +549,32 @@ export async function addComment(key, body) {
     data: { body: toADF(body) },
   });
   return normalizeComment(res.data);
+}
+
+export async function addAttachment(
+  key,
+  { path, content, filename, contentEncoding, content_encoding, contentType, content_type } = {}
+) {
+  const payload = await buildAttachmentUploadPayload({
+    path,
+    content,
+    filename,
+    contentEncoding,
+    content_encoding,
+    contentType,
+    content_type,
+  });
+
+  const res = await requestAttachment({
+    url: `/issue/${key}/attachments`,
+    method: "POST",
+    data: payload.form,
+  });
+
+  return {
+    attachments: Array.isArray(res.data) ? res.data.map(normalizeAttachment) : [normalizeAttachment(res.data)],
+    raw: res.data,
+  };
 }
 
 export async function listProjects() {

@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildIssueWritePayload, extractText, normalizeIssue, toADF } from "./jira.js";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  buildAttachmentUploadPayload,
+  buildIssueWritePayload,
+  extractText,
+  normalizeAttachment,
+  normalizeIssue,
+  toADF,
+} from "./jira.js";
 
 test("toADF splits plain text into paragraphs", () => {
   assert.deepStrictEqual(toADF("first line\n\nthird line"), {
@@ -134,6 +144,21 @@ test("normalizeIssue exposes raw issue data and common fields", () => {
       components: [{ id: "1", name: "API" }],
       fixVersions: [{ id: "2", name: "1.0" }],
       versions: [{ id: "3", name: "2.0" }],
+      attachment: [
+        {
+          id: 10001,
+          filename: "picture.jpg",
+          mimeType: "image/jpeg",
+          size: 23123,
+          created: "2024-01-03T00:00:00.000Z",
+          author: {
+            accountId: "abc",
+            displayName: "Alice",
+          },
+          content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
+          thumbnail: "https://example.atlassian.net/rest/api/3/attachment/thumbnail/10001",
+        },
+      ],
       subtasks: [{ key: "PROJ-2", fields: { summary: "Child", status: { name: "Done" } } }],
       created: "2024-01-01T00:00:00.000Z",
       updated: "2024-01-02T00:00:00.000Z",
@@ -189,6 +214,36 @@ test("normalizeIssue exposes raw issue data and common fields", () => {
     components: [{ id: "1", key: null, name: "API", value: null }],
     fixVersions: [{ id: "2", key: null, name: "1.0", value: null }],
     versions: [{ id: "3", key: null, name: "2.0", value: null }],
+    attachments: [
+      {
+        id: 10001,
+        filename: "picture.jpg",
+        mimeType: "image/jpeg",
+        size: 23123,
+        created: "2024-01-03T00:00:00.000Z",
+        author: {
+          accountId: "abc",
+          displayName: "Alice",
+          emailAddress: null,
+          active: null,
+        },
+        content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
+        thumbnail: "https://example.atlassian.net/rest/api/3/attachment/thumbnail/10001",
+        raw: {
+          id: 10001,
+          filename: "picture.jpg",
+          mimeType: "image/jpeg",
+          size: 23123,
+          created: "2024-01-03T00:00:00.000Z",
+          author: {
+            accountId: "abc",
+            displayName: "Alice",
+          },
+          content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
+          thumbnail: "https://example.atlassian.net/rest/api/3/attachment/thumbnail/10001",
+        },
+      },
+    ],
     subtasks: [
       {
         key: "PROJ-2",
@@ -198,6 +253,70 @@ test("normalizeIssue exposes raw issue data and common fields", () => {
     ],
     created: "2024-01-01T00:00:00.000Z",
     updated: "2024-01-02T00:00:00.000Z",
+    raw,
+  });
+});
+
+test("buildAttachmentUploadPayload builds a multipart file from a local path", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "jira-bridge-"));
+  const filePath = join(dir, "evidence.txt");
+  await writeFile(filePath, "attachment body");
+
+  const payload = await buildAttachmentUploadPayload({ path: filePath });
+  const file = payload.form.get("file");
+
+  assert.ok(file instanceof File);
+  assert.equal(file.name, "evidence.txt");
+  assert.equal(file.type, "application/octet-stream");
+  assert.equal(file.size, "attachment body".length);
+  assert.equal(await file.text(), "attachment body");
+  assert.equal(payload.filename, "evidence.txt");
+});
+
+test("buildAttachmentUploadPayload supports inline base64 content", async () => {
+  const payload = await buildAttachmentUploadPayload({
+    content: Buffer.from("binary data").toString("base64"),
+    filename: "payload.bin",
+    contentEncoding: "base64",
+    contentType: "application/octet-stream",
+  });
+  const file = payload.form.get("file");
+
+  assert.ok(file instanceof File);
+  assert.equal(file.name, "payload.bin");
+  assert.equal(file.size, Buffer.from("binary data").length);
+  assert.equal(Buffer.from(await file.arrayBuffer()).toString("utf8"), "binary data");
+});
+
+test("normalizeAttachment exposes Jira attachment metadata", () => {
+  const raw = {
+    id: 10001,
+    filename: "picture.jpg",
+    mimeType: "image/jpeg",
+    size: 23123,
+    created: "2024-01-03T00:00:00.000Z",
+    author: {
+      accountId: "abc",
+      displayName: "Alice",
+    },
+    content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
+    thumbnail: "https://example.atlassian.net/rest/api/3/attachment/thumbnail/10001",
+  };
+
+  assert.deepStrictEqual(normalizeAttachment(raw), {
+    id: 10001,
+    filename: "picture.jpg",
+    mimeType: "image/jpeg",
+    size: 23123,
+    created: "2024-01-03T00:00:00.000Z",
+    author: {
+      accountId: "abc",
+      displayName: "Alice",
+      emailAddress: null,
+      active: null,
+    },
+    content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
+    thumbnail: "https://example.atlassian.net/rest/api/3/attachment/thumbnail/10001",
     raw,
   });
 });
