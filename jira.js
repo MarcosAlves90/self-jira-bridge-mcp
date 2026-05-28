@@ -211,6 +211,12 @@ function normalizeSprint(raw) {
   return { id: raw.id, name: raw.name, state: raw.state, goal: raw.goal ?? null, raw };
 }
 
+function setField(target, key, value, transform = (v) => v) {
+  if (value !== undefined) {
+    target[key] = transform(value);
+  }
+}
+
 function buildIssueFields({
   summary,
   description,
@@ -221,36 +227,31 @@ function buildIssueFields({
   parent,
   fields,
 }) {
-  const payload = {
-    ...(fields ?? {}),
-  };
-
-  if (projectKey !== undefined) {
-    payload.project = { key: projectKey };
+  const payload = fields ? { ...fields } : {};
+  setField(payload, "project", projectKey, (value) => ({ key: value }));
+  setField(payload, "issuetype", issueType, (value) =>
+    typeof value === "string" ? { name: value } : value
+  );
+  setField(payload, "summary", summary);
+  if (payload.description === undefined) {
+    setField(payload, "description", description, (value) =>
+      typeof value === "string" ? toADF(value) : value
+    );
   }
-
-  if (issueType !== undefined) {
-    payload.issuetype = typeof issueType === "string" ? { name: issueType } : issueType;
+  if (payload.assignee === undefined) {
+    setField(payload, "assignee", assignee, (value) =>
+      typeof value === "string" ? { accountId: value } : value
+    );
   }
-
-  if (summary !== undefined) {
-    payload.summary = summary;
+  if (payload.priority === undefined) {
+    setField(payload, "priority", priority, (value) =>
+      typeof value === "string" ? { name: value } : value
+    );
   }
-
-  if (description !== undefined && payload.description === undefined) {
-    payload.description = typeof description === "string" ? toADF(description) : description;
-  }
-
-  if (assignee !== undefined && payload.assignee === undefined) {
-    payload.assignee = typeof assignee === "string" ? { accountId: assignee } : assignee;
-  }
-
-  if (priority !== undefined && payload.priority === undefined) {
-    payload.priority = typeof priority === "string" ? { name: priority } : priority;
-  }
-
-  if (parent !== undefined && payload.parent === undefined) {
-    payload.parent = typeof parent === "string" ? { key: parent } : parent;
+  if (payload.parent === undefined) {
+    setField(payload, "parent", parent, (value) =>
+      typeof value === "string" ? { key: value } : value
+    );
   }
 
   return payload;
@@ -296,7 +297,7 @@ async function requestAttachment(config) {
 }
 
 export async function requestJira({ base = "api", method, path, query, body, headers: extraHeaders }) {
-  if (!path || !path.startsWith("/")) {
+  if (path?.startsWith("/") !== true) {
     throw new Error("Jira request path must start with '/'");
   }
 
@@ -334,7 +335,7 @@ export async function buildAttachmentUploadPayload({
     bytes = await readFile(path);
     attachmentFilename = attachmentFilename ?? basename(path);
   } else {
-    if (!attachmentFilename) {
+    if (attachmentFilename === null) {
       throw new Error("filename is required when uploading attachment content directly");
     }
 
@@ -344,7 +345,7 @@ export async function buildAttachmentUploadPayload({
         : Buffer.from(content, "utf8");
   }
 
-  if (!attachmentFilename) {
+  if (attachmentFilename === null) {
     throw new Error("Unable to determine attachment filename");
   }
 
@@ -482,7 +483,7 @@ export async function transitionIssue(key, { transition, fields, update } = {}) 
             candidate.name?.toLowerCase() === String(transitionName ?? "").toLowerCase()
         );
 
-  if (!target) {
+  if (target === undefined) {
     throw new Error(
       `Transition not found. Available: ${transitions.map((candidate) => candidate.name).join(", ")}`
     );
