@@ -3,7 +3,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-ESM-339933?logo=nodedotjs&logoColor=white)
 ![Jira](https://img.shields.io/badge/Jira-Cloud-0052CC?logo=jira&logoColor=white)
 ![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.29-6B46C1?logo=anthropic&logoColor=white)
-![Tools](https://img.shields.io/badge/tools-11-orange)
+![Tools](https://img.shields.io/badge/tools-13-orange)
 ![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)
 
 MCP server that exposes Jira Cloud operations to AI agents.
@@ -58,6 +58,8 @@ Generate an API token at [id.atlassian.com/manage-profile/security/api-tokens](h
 | `transition_issue` | Transition an issue explicitly, optionally sending fields in the same request |
 | `add_comment` | Add a plain-text comment to an issue |
 | `add_attachment` | Upload an attachment to an existing issue |
+| `get_attachment` | Fetch attachment metadata by attachment id |
+| `delete_attachment` | Delete an attachment by attachment id |
 | `list_projects` | List all accessible Jira projects |
 | `get_sprint` | Get sprint info and its issues for a board |
 
@@ -68,5 +70,7 @@ Generate an API token at [id.atlassian.com/manage-profile/security/api-tokens](h
 - `create_issue` and `update_issue` accept free-form Jira `fields` and `update` payloads so custom fields are no longer blocked by the bridge.
 - `add_attachment` uploads a multipart `file` field and sets `X-Atlassian-Token: no-check`, which Jira Cloud requires for multipart requests.
 - `add_attachment` accepts either a local `path` or inline `content` plus `filename`; inline content can be plain text or base64 via `content_encoding`.
+- `get_attachment` returns normalized attachment metadata and the raw Jira payload under `raw`.
+- `delete_attachment` deletes an attachment by id and returns the deleted id.
 - `get_issue_metadata` is the discovery tool for required, editable, and transition-specific fields.
 - `request_jira` is the escape hatch for Jira REST endpoints that do not yet have a dedicated helper.

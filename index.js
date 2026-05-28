@@ -194,6 +194,28 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_attachment",
+  {
+    description: "Fetch attachment metadata by attachment id",
+    inputSchema: {
+      id: z.union([z.string(), z.number()]).describe("Jira attachment id"),
+    },
+  },
+  ({ id }) => safeCall(() => jira.getAttachment(id))
+);
+
+server.registerTool(
+  "delete_attachment",
+  {
+    description: "Delete an attachment by attachment id",
+    inputSchema: {
+      id: z.union([z.string(), z.number()]).describe("Jira attachment id"),
+    },
+  },
+  ({ id }) => safeCall(() => jira.deleteAttachment(id))
+);
+
+server.registerTool(
   "list_projects",
   {
     description: "List all Jira projects accessible with the current credentials",

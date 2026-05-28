@@ -577,6 +577,19 @@ export async function addAttachment(
   };
 }
 
+export async function getAttachment(id) {
+  const res = await request("api", { url: `/attachment/${id}`, method: "GET" });
+  return {
+    attachment: normalizeAttachment(res.data),
+    raw: res.data,
+  };
+}
+
+export async function deleteAttachment(id) {
+  await request("api", { url: `/attachment/${id}`, method: "DELETE" });
+  return { deleted: id };
+}
+
 export async function listProjects() {
   const res = await request("api", { url: "/project", method: "GET" });
   return (res.data ?? []).map(normalizeProject);
