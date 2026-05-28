@@ -3,7 +3,7 @@
 ![Node.js](https://img.shields.io/badge/Node.js-ESM-339933?logo=nodedotjs&logoColor=white)
 ![Jira](https://img.shields.io/badge/Jira-Cloud-0052CC?logo=jira&logoColor=white)
 ![MCP SDK](https://img.shields.io/badge/MCP_SDK-1.29-6B46C1?logo=anthropic&logoColor=white)
-![Tools](https://img.shields.io/badge/tools-7-orange)
+![Tools](https://img.shields.io/badge/tools-10-orange)
 ![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)
 
 MCP server that exposes Jira Cloud operations to AI agents.
@@ -49,10 +49,21 @@ Generate an API token at [id.atlassian.com/manage-profile/security/api-tokens](h
 
 | Tool | Description |
 |---|---|
-| `get_issue` | Fetch full details of an issue by key (e.g. `PROJ-123`) |
-| `search_issues` | Search issues using JQL |
-| `create_issue` | Create a new Task in the configured project |
-| `update_issue` | Update fields or transition the status of an issue |
+| `request_jira` | Send an authenticated request to Jira REST as an escape hatch for unsupported endpoints |
+| `get_issue` | Fetch an issue with selectable fields and raw metadata |
+| `search_issues` | Search issues using JQL with selectable fields and raw response access |
+| `get_issue_metadata` | Inspect field catalog, createmeta, editmeta, and transitions |
+| `create_issue` | Create an issue with arbitrary fields and update payloads |
+| `update_issue` | Update arbitrary fields or transition an issue |
+| `transition_issue` | Transition an issue explicitly, optionally sending fields in the same request |
 | `add_comment` | Add a plain-text comment to an issue |
 | `list_projects` | List all accessible Jira projects |
 | `get_sprint` | Get sprint info and its issues for a board |
+
+## Notes
+
+- `get_issue` returns both a normalized `issue` object and the raw Jira payload under `raw`.
+- `search_issues` accepts optional `fields`, `expand`, `fieldsByKeys`, `startAt`, and `maxResults`.
+- `create_issue` and `update_issue` accept free-form Jira `fields` and `update` payloads so custom fields are no longer blocked by the bridge.
+- `get_issue_metadata` is the discovery tool for required, editable, and transition-specific fields.
+- `request_jira` is the escape hatch for Jira REST endpoints that do not yet have a dedicated helper.
